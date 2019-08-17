@@ -1,0 +1,19 @@
+http://devops {
+  redir https://{host}{uri}
+}
+
+https://devops:443 {
+  tls /etc/caddy/chain.pem /etc/caddy/key.openssl
+
+  root /var/www/caddy/
+
+  proxy /sonar sonar:9000
+
+  proxy /gitea http://gitea:3000/ {
+    without /gitea
+  }
+
+  proxy /jenkins jenkins:8080 {
+    transparent
+  }
+}
