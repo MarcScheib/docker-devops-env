@@ -1,0 +1,105 @@
+version: '2'
+
+networks:
+  devops:
+    external: false
+
+services:
+  caddy:
+    image: abiosoft/caddy:1.0.1-php-no-stats
+    ports:
+      - 80:80
+      - 443:443
+    restart: always
+    networks:
+      - devops
+    volumes:
+      - ./config/caddy/certs:/etc/caddy
+      - ./config/caddy/www:/var/www/caddy
+      - ./config/caddy/Caddyfile:/etc/Caddyfile
+      - ./caddy/.caddy:/root/.caddy
+    depends_on:
+      - sonar
+      - gitea
+      - jenkins
+
+  gitea:
+    image: gitea/gitea:1.9
+    environment:
+      - APP_NAME="DevOps Repos"
+      - ROOT_URL="https://devops/gitea/"
+      - USER_UID=1000
+      - USER_GID=1000
+      - DB_TYPE=postgres
+      - DB_HOST=db:5432
+      - DB_NAME=gitea
+      - DB_USER=devops
+      - DB_PASSWD=devops
+    restart: always
+    networks:
+      - devops
+    volumes:
+      - ./gitea:/data
+    ports:
+      - 3000:3000
+      - 222:22
+    depends_on:
+      - db
+    extra_hosts:
+      - 'devops:10.1.2.48'
+
+  sonar:
+    image: sonarqube:7.9.1-community
+    command: -Dhttp.proxyHost=devops -Dhttp.proxyPort=443 -Dsonar.web.context=/sonar
+    ports:
+      - 9000:9000
+    restart: always
+    networks:
+      - devops
+    environment:
+      - sonar.jdbc.username=devops
+      - sonar.jdbc.password=devops
+      - sonar.jdbc.url=jdbc:postgresql://db:5432/sonar
+    depends_on:
+      - db
+    volumes:
+      - ./sonarqube/sonarqube_conf:/opt/sonarqube/conf
+      - ./sonarqube/sonarqube_data:/opt/sonarqube/data
+      - ./sonarqube/sonarqube_extensions:/opt/sonarqube/extensions
+    extra_hosts:
+      - 'devops:10.1.2.48'
+
+  jenkins:
+    build:
+      context: ./config/jenkins
+      dockerfile: Dockerfile
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - JAVA_OPTS=-Duser.timezone=Europe/Berlin
+      - JENKINS_OPTS=--prefix=/jenkins --httpPort=8080
+    ports:
+      - 8081:8080
+      - 50000:5000
+    networks:
+      - devops
+    volumes:
+      - /usr/bin/docker:/usr/bin/docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./jenkins:/var/jenkins_home
+    restart: always
+    extra_hosts:
+      - 'devops:10.1.2.48'
+
+  db:
+    image: postgres:10.9
+    restart: always
+    networks:
+      - devops
+    environment:
+      - POSTGRES_USER=devops
+      - POSTGRES_PASSWORD=devops
+    volumes:
+      - ./config/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+      - ./postgre/postgresql:/var/lib/postgresql
+      - ./postgre/postgresql_data:/var/lib/postgresql/data
